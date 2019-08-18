@@ -1,0 +1,16 @@
+{
+    "name": "Itero",
+    "keywords": "Itero, mesh",
+    "description": "Arduino library for mesh network communication",
+    "authors":
+    {
+        "name": "Lightning",
+        "email": "Lightning@LegitBS.Net"
+    },
+    "repository":
+    {
+        "type": "git",
+        "url": "git@github.com:LightningTH/Itero.git"
+    },
+    "srcFilter": "src/test.cpp"
+}
