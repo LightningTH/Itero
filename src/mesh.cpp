@@ -56,7 +56,7 @@ MeshNetworkInternal::MeshNetworkInternal(MeshNetworkData *InitData, MeshInitErro
     }
 
     //setup broadcast LFSR
-    Ret = this->SetBroadcastLFSR(InitData->BroadcastLFSR, InitData->BroadcastMask);
+    Ret = this->SetBroadcastLFSR(InitData->BroadcastLFSR, InitData->BroadcastMask1, InitData->BroadcastMask2);
     if(Ret)
     {
         *Initialized = MeshInitErrors::FailedBroadcastLFSRInit;
@@ -156,8 +156,7 @@ void MeshNetworkInternal::ReloadConnections()
         memset(NewDevice, 0, sizeof(KnownDeviceStruct));
         memcpy(NewDevice->MAC, ConnData.MAC, MAC_SIZE);
         NewDevice->LFSR_Reset = ConnData.LFSR_Reset;
-        NewDevice->LFSR_ResetMask = ConnData.LFSR_ResetMask;
-
+        
         //indicate it needs to be reconnected
         NewDevice->ConnectState = CS_Reset;
         this->InsertKnownDevice(NewDevice);

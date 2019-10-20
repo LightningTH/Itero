@@ -108,19 +108,29 @@ typedef class MeshNetworkInternal : public MeshNetwork
             CS_ResetConnecting
         } ConnectStateEnum;
 
+        typedef struct LFSRStruct
+        {
+            union {
+                unsigned long long DH;      //diffie hellman value
+                struct {
+                unsigned int LFSR;          //LFSR
+                unsigned int LFSRRot;       //LFSR for rotation
+                };
+            };
+            unsigned int LFSRMask;          //Mask for LFSR
+            unsigned int LFSRRotMask;       //Mask for rotation LFSR
+        } LFSRStruct;
+
         //bit masks are in blocks of 5 bits allowing for up to 6 bits to be used
         //as part of the LFSR calculation, must be even
         typedef struct KnownDeviceStruct
         {
             uint8_t MAC[6];
-            unsigned int LFSR_Reset;            //LFSR reset value
-            unsigned int LFSR_ResetMask;        //bit mask for LFSR Reset
-            unsigned int LFSR_In;               //LFSR for incoming data
-            unsigned int LFSR_InPrev;           //previous LFSR for incoming data
-            unsigned int LFSR_InMask;           //bit mask for LFSR In
-            unsigned int LFSR_Out;              //LFSR for outgoing data
-            unsigned int LFSR_OutPrev;          //LFSR for outgoing data
-            unsigned int LFSR_OutMask;          //bit mask for LFSR Out
+            LFSRStruct LFSR_Reset;              //LFSR reset values
+            LFSRStruct LFSR_In;                 //LFSR for incoming data
+            LFSRStruct LFSR_InPrev;             //previous LFSR for incoming data
+            LFSRStruct LFSR_Out;                //LFSR for outgoing data
+            LFSRStruct LFSR_OutPrev;            //previous LFSR for outgoing data
             unsigned int ID_In;                 //Incrementing ID for incoming
             unsigned int ID_Out;                //Incrementing ID for outgoing
             ConnectStateEnum ConnectState;      //indicate if we are connecting
@@ -145,26 +155,22 @@ typedef class MeshNetworkInternal : public MeshNetwork
 
         typedef struct __attribute__((packed)) DHHandshakeStruct
         {
-            unsigned int Challenge;
+            unsigned long long Challenge;
             unsigned int Mask;
+            unsigned int RotMask;
         } DHHandshakeStruct;
 
         typedef struct __attribute__((packed)) DHFinalizeHandshakeStruct
         {
-            unsigned int Chal;
-            struct LFSR
-            {
-                unsigned int LFSR[3];
-                unsigned int LFSRMask[3];
-            } LFSR;
+            unsigned long long Chal;
+            LFSRStruct LFSR[3];
             char Name[20];
         } DHFinalizeHandshakeStruct;
 
         typedef struct __attribute__((packed)) ConnectedStruct
         {
             unsigned int ID;
-            unsigned int LFSR;
-            unsigned int LFSRMask;
+            LFSRStruct LFSR;
             char Name[20];
         } ConnectedStruct;
 
@@ -198,8 +204,7 @@ typedef class MeshNetworkInternal : public MeshNetwork
         pthread_t MessageRXThread;
 
         //LFSR for broadcast messages
-        unsigned int LFSR_Broadcast;
-        unsigned int LFSR_BroadcastMask;
+        LFSRStruct LFSR_Broadcast;
         unsigned int BroadcastMsgID;
 
         int Initialized;
@@ -210,23 +215,24 @@ typedef class MeshNetworkInternal : public MeshNetwork
         void HandleRXMessage(uint8_t *Data, size_t Len, size_t Count);
         
         //init
-        int SetBroadcastLFSR(unsigned int BroadcastLFSR, uint8_t Mask[3]);
-        int DHInit(unsigned int P, unsigned int G);
+        int SetBroadcastLFSR(unsigned int BroadcastLFSR[2], uint8_t Mask1[3], uint8_t Mask2[3]);
+        int DHInit(unsigned long long P, unsigned long long G);
 
         //enryption
-        void Encrypt(const void *InData, void *OutData, unsigned short DataLen, unsigned int *LFSR, unsigned int LFSR_Mask);
-        void Decrypt(const void *InData, void *OutData, unsigned short DataLen, unsigned int *LFSR, unsigned int LFSR_Mask);
+        void Encrypt(const void *InData, void *OutData, unsigned short DataLen, LFSRStruct *LFSR);
+        void Decrypt(const void *InData, void *OutData, unsigned short DataLen, LFSRStruct *LFSR);
         uint8_t *EncryptPacket(KnownDeviceStruct *Device, const uint8_t *InData, unsigned short DataLen, unsigned short *OutPacketLen);
         uint8_t *DecryptPacket(KnownDeviceStruct *Device, const uint8_t *InPacket, unsigned short PacketLen, unsigned short *OutDataLen, unsigned int *DoAck);
         uint8_t *EncryptBroadcastPacket(const uint8_t *InData, unsigned short DataLen, unsigned short *OutPacketLen);
         uint8_t *DecryptBroadcastPacket(UnknownDeviceStruct *Device, const uint8_t *InPacket, unsigned short PacketLen, unsigned short *OutDataLen);
-        uint8_t *EncryptPacketCommon(unsigned int SequenceID, unsigned int *LFSR, unsigned int LFSRMask, const uint8_t *InData, unsigned short DataLen, unsigned short *OutPacketLen);
-        uint8_t *DecryptPacketCommon(unsigned int SequenceID, unsigned int *LFSR, unsigned int LFSRMask, const uint8_t *InPacket, unsigned short PacketLen, unsigned short *OutDataLen);
+        uint8_t *EncryptPacketCommon(unsigned int SequenceID, LFSRStruct *LFSR, const uint8_t *InData, unsigned short DataLen, unsigned short *OutPacketLen);
+        uint8_t *DecryptPacketCommon(unsigned int SequenceID, LFSRStruct *LFSR, const uint8_t *InPacket, unsigned short PacketLen, unsigned short *OutDataLen);
 
         //lfsr and crc
         unsigned int CreateLFSRMask();
-        unsigned int PermuteBroadcastLFSR(const uint8_t *MAC, unsigned int ID);
-        unsigned int CalculateLFSR(unsigned int LFSR, unsigned int Mask);
+        void PermuteBroadcastLFSR(const uint8_t *MAC, unsigned int ID, LFSRStruct *LFSR);
+        void CalculateLFSR(LFSRStruct *LFSR);
+        unsigned int RotateLFSR(unsigned int LFSR, unsigned int Mask, unsigned int Count);
         uint8_t CalculateCRC(const void *Data, unsigned int DataLen);
         uint8_t CalculateCRC(const void *Data, unsigned int DataLen, uint8_t StartCRC);
 
@@ -244,10 +250,12 @@ typedef class MeshNetworkInternal : public MeshNetwork
         int Connected(const uint8_t *MAC, uint8_t *Payload, int PayloadLen);
 
         //diffie Hellman
-        unsigned int DHPowMod(unsigned int g, unsigned int priv);
-        unsigned int DHCreateChallenge(unsigned int *challenge);
-        unsigned int DHFinishChallenge(unsigned int priv, unsigned int challenge);
-        unsigned int DH_P, DH_G;
+        void DHMul128(unsigned long long a[2], unsigned long long b[2], unsigned long long *ret);
+        unsigned long long DHMod128(unsigned long long a[2], unsigned long long b);
+        unsigned long long DHPowMod(unsigned long long g, unsigned long long priv);
+        unsigned long long DHCreateChallenge(unsigned long long *challenge);
+        unsigned long long DHFinishChallenge(unsigned long long priv, unsigned long long challenge);
+        unsigned long long DH_P, DH_G;
 
         //payload handling code
         int SendPayload(MessageTypeEnum MsgType, const uint8_t *MAC, const void *InData, unsigned short DataLen);
@@ -255,8 +263,7 @@ typedef class MeshNetworkInternal : public MeshNetwork
         typedef struct __attribute__((packed)) PrefConnStruct
         {
             uint8_t MAC[6];
-            unsigned int LFSR_Reset;            //LFSR reset value
-            unsigned int LFSR_ResetMask;        //bit mask for LFSR Reset            
+            LFSRStruct LFSR_Reset;                 //LFSR reset value       
         } PrefConnStruct;
 
         void ReloadConnections();
