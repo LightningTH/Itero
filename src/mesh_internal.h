@@ -250,7 +250,7 @@ typedef class MeshNetworkInternal : public MeshNetwork
         int Connected(const uint8_t *MAC, uint8_t *Payload, int PayloadLen);
 
         //diffie Hellman
-        void DHMul128(unsigned long long a[2], unsigned long long b[2], unsigned long long *ret);
+        void DHMul64(unsigned long long a, unsigned long long b, unsigned long long *ret);
         unsigned long long DHMod128(unsigned long long a[2], unsigned long long b);
         unsigned long long DHPowMod(unsigned long long g, unsigned long long priv);
         unsigned long long DHCreateChallenge(unsigned long long *challenge);

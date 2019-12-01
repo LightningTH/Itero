@@ -133,16 +133,16 @@ void setup()
         Serial.println("Error starting wifi in STA mode");
 
     //initialize the mesh network configuration
-    MeshInitData.BroadcastMask1[0] = 3;
-    MeshInitData.BroadcastMask1[1] = 7;
-    MeshInitData.BroadcastMask1[2] = 24;
-    MeshInitData.BroadcastMask2[0] = 3;
-    MeshInitData.BroadcastMask2[1] = 7;
-    MeshInitData.BroadcastMask2[2] = 24;
-    MeshInitData.BroadcastLFSR[0] = 0xace2b13a;
-    MeshInitData.BroadcastLFSR[1] = 0xace2b13a;
-    MeshInitData.DiffieHellman_P = 4169116887;
-    MeshInitData.DiffieHellman_G = 3889611491;
+    MeshInitData.BroadcastMask1[0] = 13;
+    MeshInitData.BroadcastMask1[1] = 8;
+    MeshInitData.BroadcastMask1[2] = 21;
+    MeshInitData.BroadcastMask2[0] = 23;
+    MeshInitData.BroadcastMask2[1] = 18;
+    MeshInitData.BroadcastMask2[2] = 30;
+    MeshInitData.BroadcastLFSR[0] = 0xf919b1b6;
+    MeshInitData.BroadcastLFSR[1] = 0xb1eb535e;
+    MeshInitData.DiffieHellman_P = 12412372739946577469ULL;
+    MeshInitData.DiffieHellman_G = 11011158976040270681ULL;
     MeshInitData.SendFailedCallback = SendToDeviceFailed;
     MeshInitData.ConnectedCallback = DeviceConnected;
     MeshInitData.ReceiveMessageCallback = MessageReceived;

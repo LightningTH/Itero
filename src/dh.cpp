@@ -1,21 +1,26 @@
 #include <Arduino.h>
 #include "mesh_internal.h"
 
-//#define DH_P 4169116887
-//#define DH_G 3889611491
-
-void MeshNetworkInternal::DHMul128(unsigned long long a[2], unsigned long long b[2], unsigned long long *ret)
+void MeshNetworkInternal::DHMul64(unsigned long long a, unsigned long long b, unsigned long long *ret)
 {
     unsigned long long low;
     unsigned long long mid1;
     unsigned long long mid2;
     unsigned long long high;
+    unsigned long long a_part[2];
+    unsigned long long b_part[2];
+
+    //split up our 64bit incoming values so we can properly operate on it
+    a_part[0] = a & 0xffffffff;
+    a_part[1] = a >> 32;
+    b_part[0] = b & 0xffffffff;
+    b_part[1] = b >> 32;
 
     //handle portions
-    high = (a[1] * b[1]);
-    mid1 = (a[1] * b[0]);
-    mid2 = (a[0] * b[1]);
-    low = (a[0] * b[0]);
+    high = (a_part[1] * b_part[1]);
+    mid1 = (a_part[1] * b_part[0]);
+    mid2 = (a_part[0] * b_part[1]);
+    low = (a_part[0] * b_part[0]);
 
     //combine
     ret[0] = low + ((mid1 << 32)) + ((mid2 << 32));
@@ -89,7 +94,7 @@ unsigned long long MeshNetworkInternal::DHPowMod(unsigned long long g, unsigned 
         if(pr & 1)
         {
             //result = (result * gl) % ml;
-            this->DHMul128(result, gl, result);
+            this->DHMul64(result[0], gl[0], result);
             result[0] = this->DHMod128(result, ml);
             result[1] = 0;
         }
@@ -97,7 +102,7 @@ unsigned long long MeshNetworkInternal::DHPowMod(unsigned long long g, unsigned 
         //bit shift
         pr >>= 1;
         //gl = (gl * gl) % ml;
-        this->DHMul128(gl, gl, gl);
+        this->DHMul64(gl[0], gl[0], gl);
         gl[0] = this->DHMod128(gl, ml);
         gl[1] = 0;
     };
@@ -119,11 +124,11 @@ unsigned long long MeshNetworkInternal::DHCreateChallenge(unsigned long long *ch
 
     *challenge = this->DHPowMod(this->DH_G, priv64);
     DEBUG_WRITE("DHCreateChallenge priv ");
-    DEBUG_WRITEHEXVAL(priv, 8);
+    DEBUG_WRITEHEXVAL64(priv64);
     DEBUG_WRITE(", challenge ");
-    DEBUG_WRITEHEXVAL(*challenge, 8);
+    DEBUG_WRITEHEXVAL64(*challenge);
     DEBUG_WRITE("\n");
-    return priv[0];
+    return priv64;
 }
 
 unsigned long long MeshNetworkInternal::DHFinishChallenge(unsigned long long priv, unsigned long long challenge)
@@ -132,11 +137,11 @@ unsigned long long MeshNetworkInternal::DHFinishChallenge(unsigned long long pri
 
     ret = this->DHPowMod(challenge, priv);
     DEBUG_WRITE("DHFinishCHallenge priv ");
-    DEBUG_WRITEHEXVAL(priv, 8);
+    DEBUG_WRITEHEXVAL64(priv);
     DEBUG_WRITE(", challenge ");
-    DEBUG_WRITEHEXVAL(challenge, 8);
+    DEBUG_WRITEHEXVAL64(challenge);
     DEBUG_WRITE(", ret ");
-    DEBUG_WRITEHEXVAL(ret, 8);
+    DEBUG_WRITEHEXVAL64(ret);
     DEBUG_WRITE("\n");
 
     return ret;
@@ -153,9 +158,9 @@ int MeshNetworkInternal::DHInit(unsigned long long P, unsigned long long G)
     this->DH_G = G;
 
     DEBUG_WRITE("DHInit P ");
-    DEBUG_WRITE(P);
+    DEBUG_WRITEHEXVAL64(P);
     DEBUG_WRITE(", G ");
-    DEBUG_WRITE(G);
+    DEBUG_WRITEHEXVAL64(G);
     DEBUG_WRITE("\n");
 
     return 0;
