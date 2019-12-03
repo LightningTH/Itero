@@ -18,32 +18,33 @@ void MeshNetworkInternal::DHMul64(unsigned long long a, unsigned long long b, un
 
     //handle portions
     high = (a_part[1] * b_part[1]);
-    mid1 = (a_part[1] * b_part[0]);
-    mid2 = (a_part[0] * b_part[1]);
+    mid1 = (a_part[0] * b_part[1]);
+    mid2 = (a_part[1] * b_part[0]);
     low = (a_part[0] * b_part[0]);
 
     //combine
-    ret[0] = low + ((mid1 << 32)) + ((mid2 << 32));
+    ret[0] = low + (mid1 << 32) + (mid2 << 32);
     ret[1] = high + (mid1 >> 32) + (mid2 >> 32);
-    if(((mid1 & 0xffffffff) + (mid2 & 0xffffffff)) >> 32)
-        ret[1]++;
+    ret[1] += (((mid1 & 0xffffffff) + (mid2 & 0xffffffff) + (low >> 32)) >> 32);
 }
 
 unsigned long long MeshNetworkInternal::DHMod128(unsigned long long a[2], unsigned long long b)
 {
     unsigned long long x[2];
-    unsigned long long adiv2[2];
+    unsigned long long atemp[2];
 
     x[0] = b;
     x[1] = 0;
-    adiv2[0] = a[0] >> 1;
-    adiv2[1] = a[1] >> 1;
-    adiv2[0] |= (a[1] & 1) << 63;
+
+    //atemp = A >> 1
+    atemp[0] = a[0] >> 1;
+    atemp[1] = a[1] >> 1;
+    atemp[0] |= (a[1] & 1) << 63;
 
     while(1)
     {
         //if X > (A / 2) break
-        if((x[1] > adiv2[1]) || ((x[1] == adiv2[1]) && (x[0] > adiv2[0])))
+        if((x[1] > atemp[1]) || ((x[1] == atemp[1]) && (x[0] > atemp[0])))
             break;
 
         x[1] <<= 1;
@@ -52,19 +53,23 @@ unsigned long long MeshNetworkInternal::DHMod128(unsigned long long a[2], unsign
         x[0] <<= 1;
     }
 
+    //copy the input so we don't modify the original
+    atemp[0] = a[0];
+    atemp[1] = a[1];
+
     while(1)
     {
         //if A < B break
-        if(!a[1] && (a[2] < b))
+        if(!atemp[1] && (atemp[0] < b))
             break;
 
         //if A >= X {A -= X}
-        if((a[1] > x[1]) || ((a[1] == x[1]) && (a[0] >= x[0])))
+        if((atemp[1] > x[1]) || ((atemp[1] == x[1]) && (atemp[0] >= x[0])))
         {
-            adiv2[0] = a[0] - x[0];
-            adiv2[1] = a[1] - x[1];
-            if(adiv2[0] < a[0])
-                adiv2[1]--;
+            if(atemp[0] < x[0])
+                atemp[1]--;
+            atemp[0] = atemp[0] - x[0];
+            atemp[1] = atemp[1] - x[1];
         }
 
         //x >>= 1
@@ -73,7 +78,7 @@ unsigned long long MeshNetworkInternal::DHMod128(unsigned long long a[2], unsign
         x[1] >>= 1;
     }
 
-    return a[0];
+    return atemp[0];
 }
 
 unsigned long long MeshNetworkInternal::DHPowMod(unsigned long long g, unsigned long long pr)
