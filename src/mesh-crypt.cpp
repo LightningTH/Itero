@@ -2,7 +2,7 @@
 #include "debug.h"
 #include <unistd.h>
 
-void MeshNetworkInternal::Encrypt(const void *InData, void *OutData, unsigned short DataLen, unsigned int *LFSR, unsigned int LFSR_Mask)
+void MeshNetworkInternal::Encrypt(const void *InData, void *OutData, unsigned short DataLen, LFSRStruct *LFSR)
 {
     int Count;
     uint8_t *IntInData = (uint8_t *)InData;
@@ -14,17 +14,18 @@ void MeshNetworkInternal::Encrypt(const void *InData, void *OutData, unsigned sh
     {
         //get a copy of the character just in-case in and out are the same
         InChar = *IntInData;
-        *IntOutData = *IntInData ^ (*LFSR & 0xff);
+        *IntOutData = *IntInData ^ (LFSR->LFSR & 0xff);
 
         //advance the LFSR after xor'ing in the original data to force a CBC mode
-        *LFSR ^= InChar;
-        *LFSR = this->CalculateLFSR(*LFSR, LFSR_Mask);
+        LFSR->LFSR ^= InChar;
+        LFSR->LFSRRot ^= (uint32_t)InChar << 13;
+        this->CalculateLFSR(LFSR);
     }
 
     return;
 }
 
-void MeshNetworkInternal::Decrypt(const void *InData, void *OutData, unsigned short DataLen, unsigned int *LFSR, unsigned int LFSR_Mask)
+void MeshNetworkInternal::Decrypt(const void *InData, void *OutData, unsigned short DataLen, LFSRStruct *LFSR)
 {
     int Count;
     uint8_t *IntInData = (uint8_t *)InData;
@@ -33,17 +34,18 @@ void MeshNetworkInternal::Decrypt(const void *InData, void *OutData, unsigned sh
     //cycle through and encrypt, we do a cbc style mode by xor'ing in the original data into the LFSR before it is recalculated
     for(Count = 0; Count < DataLen; Count++, IntInData++, IntOutData++)
     {
-        *IntOutData = *IntInData ^ (*LFSR & 0xff);
+        *IntOutData = *IntInData ^ (LFSR->LFSR & 0xff);
 
         //advance the LFSR after xor'ing in the resulting data which should be the original to force CBC mode
-        *LFSR ^= *IntOutData;
-        *LFSR = this->CalculateLFSR(*LFSR, LFSR_Mask);
+        LFSR->LFSR ^= *IntOutData;
+        LFSR->LFSRRot ^= (uint32_t)*IntOutData << 13;
+        this->CalculateLFSR(LFSR);
     }
 
     return;
 }
 
-uint8_t *MeshNetworkInternal::EncryptPacketCommon(unsigned int SequenceID, unsigned int *LFSR, unsigned int LFSRMask, const uint8_t *InData, unsigned short DataLen, unsigned short *OutPacketLen)
+uint8_t *MeshNetworkInternal::EncryptPacketCommon(unsigned int SequenceID, LFSRStruct *LFSR, const uint8_t *InData, unsigned short DataLen, unsigned short *OutPacketLen)
 {
     unsigned int ValidPacketID = VALID_PACKET_ID;
     uint8_t *Packet;
@@ -66,10 +68,10 @@ uint8_t *MeshNetworkInternal::EncryptPacketCommon(unsigned int SequenceID, unsig
     PacketHeader->InternalCRC = this->CalculateCRC(InData, DataLen, PacketHeader->InternalCRC); //add in the incoming data
 
     //do the encryption
-    this->Encrypt(InData, &Packet[sizeof(PacketHeaderStruct)], DataLen, LFSR, LFSRMask);
+    this->Encrypt(InData, &Packet[sizeof(PacketHeaderStruct)], DataLen, LFSR);
 
     //add on the indicator that the packet was decrypted properly
-    this->Encrypt(&ValidPacketID, &Packet[sizeof(PacketHeaderStruct) + DataLen], sizeof(ValidPacketID), LFSR, LFSRMask);
+    this->Encrypt(&ValidPacketID, &Packet[sizeof(PacketHeaderStruct) + DataLen], sizeof(ValidPacketID), LFSR);
 
     //everything is good, return the buffer, ack will cause LFSR and ID to change
     *OutPacketLen = DataLen + sizeof(PacketHeaderStruct) + sizeof(ValidPacketID);
@@ -79,17 +81,21 @@ uint8_t *MeshNetworkInternal::EncryptPacketCommon(unsigned int SequenceID, unsig
 uint8_t *MeshNetworkInternal::EncryptPacket(KnownDeviceStruct *Device, const uint8_t *InData, unsigned short DataLen, unsigned short *OutPacketLen)
 {
     uint8_t *ret;
-    unsigned int LFSR;
+    LFSRStruct LFSR;
 
     //copy off the LFSR so that we can update if successful
-    DEBUG_WRITE("EncryptPacket: LFSR ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_Out, 8);
+    DEBUG_WRITE("EncryptPacket: LFSR: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_OutMask, 8);
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     LFSR = Device->LFSR_Out;
-    ret = this->EncryptPacketCommon(Device->ID_Out, &LFSR, Device->LFSR_OutMask, InData, DataLen, OutPacketLen);
+    ret = this->EncryptPacketCommon(Device->ID_Out, &LFSR, InData, DataLen, OutPacketLen);
     if(ret)
     {
         //update LFSR and ID
@@ -104,15 +110,23 @@ uint8_t *MeshNetworkInternal::EncryptPacket(KnownDeviceStruct *Device, const uin
 uint8_t *MeshNetworkInternal::EncryptBroadcastPacket(const uint8_t *InData, unsigned short DataLen, unsigned short *OutPacketLen)
 {
     uint8_t *ret;
+    LFSRStruct LFSR;
 
     //get our LFSR for this device
-    unsigned int BroadcastLFSR = this->PermuteBroadcastLFSR(this->MAC, this->BroadcastMsgID);
+    this->PermuteBroadcastLFSR(this->MAC, this->BroadcastMsgID, &LFSR);
     DEBUG_WRITE("Encrypt Broadcast LFSR: ");
-    DEBUG_WRITEHEXVAL(BroadcastLFSR, 8);
+    DEBUG_WRITEHEXVAL(LFSR.LFSR, 8);
+    DEBUG_WRITE(", Mask: ");
+    DEBUG_WRITEHEXVAL(LFSR.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(LFSR.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(LFSR.LFSRRotMask, 8);
     DEBUG_WRITE(", ID: ");
     DEBUG_WRITEHEXVAL(this->BroadcastMsgID, 8);
     DEBUG_WRITE("\n");
-    ret = this->EncryptPacketCommon(this->BroadcastMsgID, &BroadcastLFSR, this->LFSR_BroadcastMask, InData, DataLen, OutPacketLen);
+
+    ret = this->EncryptPacketCommon(this->BroadcastMsgID, &LFSR, InData, DataLen, OutPacketLen);
     if(ret)
     {
         this->BroadcastMsgID++;
@@ -124,7 +138,7 @@ uint8_t *MeshNetworkInternal::EncryptBroadcastPacket(const uint8_t *InData, unsi
     return ret;
 }
 
-uint8_t *MeshNetworkInternal::DecryptPacketCommon(unsigned int SequenceID, unsigned int *LFSR, unsigned int LFSRMask, const uint8_t *InPacket, unsigned short PacketLen, unsigned short *OutDataLen)
+uint8_t *MeshNetworkInternal::DecryptPacketCommon(unsigned int SequenceID, LFSRStruct *LFSR, const uint8_t *InPacket, unsigned short PacketLen, unsigned short *OutDataLen)
 {
     uint8_t *Packet;
     PacketHeaderStruct *PacketHeader;
@@ -149,8 +163,8 @@ uint8_t *MeshNetworkInternal::DecryptPacketCommon(unsigned int SequenceID, unsig
         return 0;
 
     Packet = (uint8_t *)malloc(DataSize);
-    this->Decrypt(&InPacket[sizeof(PacketHeaderStruct)], Packet, DataSize, LFSR, LFSRMask);
-    this->Decrypt(&InPacket[sizeof(PacketHeaderStruct) + DataSize], (uint8_t *)&ValidPacketID, sizeof(ValidPacketID), LFSR, LFSRMask);
+    this->Decrypt(&InPacket[sizeof(PacketHeaderStruct)], Packet, DataSize, LFSR);
+    this->Decrypt(&InPacket[sizeof(PacketHeaderStruct) + DataSize], (uint8_t *)&ValidPacketID, sizeof(ValidPacketID), LFSR);
 
     //check the internal CRC and PacketID
     CRC = this->CalculateCRC(&InPacket[1], sizeof(PacketHeaderStruct) - 1);
@@ -181,10 +195,10 @@ uint8_t *MeshNetworkInternal::DecryptPacketCommon(unsigned int SequenceID, unsig
 uint8_t *MeshNetworkInternal::DecryptPacket(KnownDeviceStruct *Device, const uint8_t *InPacket, unsigned short PacketLen, unsigned short *OutDataLen, unsigned int *DoAck)
 {
     uint8_t *ret;
-    unsigned int LFSR;
-    LFSR = Device->LFSR_In;
+    LFSRStruct LFSR;
 
-    ret = this->DecryptPacketCommon(Device->ID_In, &LFSR, Device->LFSR_InMask, InPacket, PacketLen, OutDataLen);
+    LFSR = Device->LFSR_In;
+    ret = this->DecryptPacketCommon(Device->ID_In, &LFSR, InPacket, PacketLen, OutDataLen);
 
     //if a good message then increment the ID
     *DoAck = 0;
@@ -199,7 +213,7 @@ uint8_t *MeshNetworkInternal::DecryptPacket(KnownDeviceStruct *Device, const uin
     {
         //we failed to decrypt, try to decrypt with the previous lfsr and see if we are off by 1
         LFSR = Device->LFSR_InPrev;
-        ret = this->DecryptPacketCommon(Device->ID_In - 1, &LFSR, Device->LFSR_InMask, InPacket, PacketLen, OutDataLen);
+        ret = this->DecryptPacketCommon(Device->ID_In - 1, &LFSR, InPacket, PacketLen, OutDataLen);
 
         //if successful then indicate we need to just re-ack
         if(ret)
@@ -216,6 +230,7 @@ uint8_t *MeshNetworkInternal::DecryptPacket(KnownDeviceStruct *Device, const uin
 uint8_t *MeshNetworkInternal::DecryptBroadcastPacket(UnknownDeviceStruct *Device, const uint8_t *InPacket, unsigned short PacketLen, unsigned short *OutDataLen)
 {
     unsigned int SequenceID;
+    LFSRStruct LFSR;
 
     //decrypt data and return the data found in the packet
 
@@ -227,8 +242,8 @@ uint8_t *MeshNetworkInternal::DecryptBroadcastPacket(UnknownDeviceStruct *Device
     SequenceID = ((PacketHeaderStruct *)InPacket)->SequenceID;
 
     //get our LFSR for this device
-    unsigned int BroadcastLFSR = this->PermuteBroadcastLFSR(Device->MAC, SequenceID);
+    this->PermuteBroadcastLFSR(Device->MAC, SequenceID, &LFSR);
 
     //attempt to decrypt
-    return this->DecryptPacketCommon(SequenceID, &BroadcastLFSR, this->LFSR_BroadcastMask, InPacket, PacketLen, OutDataLen);
+    return this->DecryptPacketCommon(SequenceID, &LFSR, InPacket, PacketLen, OutDataLen);
 }

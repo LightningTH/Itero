@@ -1,65 +1,159 @@
 #include <Arduino.h>
 #include "mesh_internal.h"
 
-//#define DH_P 4169116887
-//#define DH_G 3889611491
-
-unsigned int MeshNetworkInternal::DHPowMod(unsigned int g, unsigned int pr)
+void MeshNetworkInternal::DHMul64(unsigned long long a, unsigned long long b, unsigned long long *ret)
 {
-    //do a 32bit pow/mod, (g**pr) % m
-    unsigned long long result;
-    unsigned long long gl;
+    unsigned long long low;
+    unsigned long long mid1;
+    unsigned long long mid2;
+    unsigned long long high;
+    unsigned long long a_part[2];
+    unsigned long long b_part[2];
+
+    //split up our 64bit incoming values so we can properly operate on it
+    a_part[0] = a & 0xffffffff;
+    a_part[1] = a >> 32;
+    b_part[0] = b & 0xffffffff;
+    b_part[1] = b >> 32;
+
+    //handle portions
+    high = (a_part[1] * b_part[1]);
+    mid1 = (a_part[0] * b_part[1]);
+    mid2 = (a_part[1] * b_part[0]);
+    low = (a_part[0] * b_part[0]);
+
+    //combine
+    ret[0] = low + (mid1 << 32) + (mid2 << 32);
+    ret[1] = high + (mid1 >> 32) + (mid2 >> 32);
+    ret[1] += (((mid1 & 0xffffffff) + (mid2 & 0xffffffff) + (low >> 32)) >> 32);
+}
+
+unsigned long long MeshNetworkInternal::DHMod128(unsigned long long a[2], unsigned long long b)
+{
+    unsigned long long x[2];
+    unsigned long long atemp[2];
+
+    x[0] = b;
+    x[1] = 0;
+
+    //atemp = A >> 1
+    atemp[0] = a[0] >> 1;
+    atemp[1] = a[1] >> 1;
+    atemp[0] |= (a[1] & 1) << 63;
+
+    while(1)
+    {
+        //if X > (A / 2) break
+        if((x[1] > atemp[1]) || ((x[1] == atemp[1]) && (x[0] > atemp[0])))
+            break;
+
+        x[1] <<= 1;
+        if(x[0] >> 63)
+            x[1] |= 1;
+        x[0] <<= 1;
+    }
+
+    //copy the input so we don't modify the original
+    atemp[0] = a[0];
+    atemp[1] = a[1];
+
+    while(1)
+    {
+        //if A < B break
+        if(!atemp[1] && (atemp[0] < b))
+            break;
+
+        //if A >= X {A -= X}
+        if((atemp[1] > x[1]) || ((atemp[1] == x[1]) && (atemp[0] >= x[0])))
+        {
+            if(atemp[0] < x[0])
+                atemp[1]--;
+            atemp[0] = atemp[0] - x[0];
+            atemp[1] = atemp[1] - x[1];
+        }
+
+        //x >>= 1
+        x[0] >>= 1;
+        x[0] |= (x[1] << 63);
+        x[1] >>= 1;
+    }
+
+    return atemp[0];
+}
+
+unsigned long long MeshNetworkInternal::DHPowMod(unsigned long long g, unsigned long long pr)
+{
+    //do a 64bit pow/mod, (g**pr) % m
+    unsigned long long result[2];
+    unsigned long long gl[2];
     unsigned long long ml;
 
-    gl = g;
+    gl[0] = g;
+    gl[1] = 0;
     ml = this->DH_P;
-    result = 1;
+    result[0] = 1;
+    result[1] = 0;
     while(pr)
     {
         //if set then do a multiple and modulus
         if(pr & 1)
-            result = (result * gl) % ml;
+        {
+            //result = (result * gl) % ml;
+            this->DHMul64(result[0], gl[0], result);
+            result[0] = this->DHMod128(result, ml);
+            result[1] = 0;
+        }
 
         //bit shift
         pr >>= 1;
-        gl = (gl * gl) % ml;
+        //gl = (gl * gl) % ml;
+        this->DHMul64(gl[0], gl[0], gl);
+        gl[0] = this->DHMod128(gl, ml);
+        gl[1] = 0;
     };
 
-    return result;
+    return result[0];
 }
 
 //return our value and set the provided value to what the other side is given
-unsigned int MeshNetworkInternal::DHCreateChallenge(unsigned int *challenge)
+unsigned long long MeshNetworkInternal::DHCreateChallenge(unsigned long long *challenge)
 {
     //select a random value
-    unsigned int priv = esp_random();
-    *challenge = this->DHPowMod(this->DH_G, priv);
+    union
+    {
+        unsigned int priv[2];
+        unsigned long long priv64;
+    };
+    priv[0] = esp_random();
+    priv[1] = esp_random();
+
+    *challenge = this->DHPowMod(this->DH_G, priv64);
     DEBUG_WRITE("DHCreateChallenge priv ");
-    DEBUG_WRITEHEXVAL(priv, 8);
+    DEBUG_WRITEHEXVAL64(priv64);
     DEBUG_WRITE(", challenge ");
-    DEBUG_WRITEHEXVAL(*challenge, 8);
+    DEBUG_WRITEHEXVAL64(*challenge);
     DEBUG_WRITE("\n");
-    return priv;
+    return priv64;
 }
 
-unsigned int MeshNetworkInternal::DHFinishChallenge(unsigned int priv, unsigned int challenge)
+unsigned long long MeshNetworkInternal::DHFinishChallenge(unsigned long long priv, unsigned long long challenge)
 {
-    unsigned int ret;
+    unsigned long long ret;
 
     ret = this->DHPowMod(challenge, priv);
     DEBUG_WRITE("DHFinishCHallenge priv ");
-    DEBUG_WRITEHEXVAL(priv, 8);
+    DEBUG_WRITEHEXVAL64(priv);
     DEBUG_WRITE(", challenge ");
-    DEBUG_WRITEHEXVAL(challenge, 8);
+    DEBUG_WRITEHEXVAL64(challenge);
     DEBUG_WRITE(", ret ");
-    DEBUG_WRITEHEXVAL(ret, 8);
+    DEBUG_WRITEHEXVAL64(ret);
     DEBUG_WRITE("\n");
 
     return ret;
 
 }
 
-int MeshNetworkInternal::DHInit(unsigned int P, unsigned int G)
+int MeshNetworkInternal::DHInit(unsigned long long P, unsigned long long G)
 {
     //if G is larger than P then fail
     if(G > P)
@@ -69,9 +163,9 @@ int MeshNetworkInternal::DHInit(unsigned int P, unsigned int G)
     this->DH_G = G;
 
     DEBUG_WRITE("DHInit P ");
-    DEBUG_WRITE(P);
+    DEBUG_WRITEHEXVAL64(P);
     DEBUG_WRITE(", G ");
-    DEBUG_WRITE(G);
+    DEBUG_WRITEHEXVAL64(G);
     DEBUG_WRITE("\n");
 
     return 0;

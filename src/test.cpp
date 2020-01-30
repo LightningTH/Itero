@@ -133,12 +133,16 @@ void setup()
         Serial.println("Error starting wifi in STA mode");
 
     //initialize the mesh network configuration
-    MeshInitData.BroadcastMask[0] = 3;
-    MeshInitData.BroadcastMask[1] = 7;
-    MeshInitData.BroadcastMask[2] = 24;
-    MeshInitData.BroadcastLFSR = 0xace2b13a;
-    MeshInitData.DiffieHellman_P = 4169116887;
-    MeshInitData.DiffieHellman_G = 3889611491;
+    MeshInitData.BroadcastMask1[0] = 13;
+    MeshInitData.BroadcastMask1[1] = 8;
+    MeshInitData.BroadcastMask1[2] = 21;
+    MeshInitData.BroadcastMask2[0] = 23;
+    MeshInitData.BroadcastMask2[1] = 18;
+    MeshInitData.BroadcastMask2[2] = 30;
+    MeshInitData.BroadcastLFSR[0] = 0xf919b1b6;
+    MeshInitData.BroadcastLFSR[1] = 0xb1eb535e;
+    MeshInitData.DiffieHellman_P = 12412372739946577469ULL;
+    MeshInitData.DiffieHellman_G = 11011158976040270681ULL;
     MeshInitData.SendFailedCallback = SendToDeviceFailed;
     MeshInitData.ConnectedCallback = DeviceConnected;
     MeshInitData.ReceiveMessageCallback = MessageReceived;
@@ -165,9 +169,9 @@ void setup()
     return;
 }
 
-const uint8_t DeviceMacs[2][MAC_SIZE] = {//{0xcc, 0x50, 0xe3, 0xa8, 0x40, 0xd0},
-                                         {0xcc, 0x50, 0xe3, 0xa9, 0x9b, 0xb4},
-                                         {0xb4, 0xe6, 0x2d, 0xf6, 0xe6, 0xd5}};
+const uint8_t DeviceMacs[2][MAC_SIZE] = {{0xcc, 0x50, 0xe3, 0xa8, 0x40, 0xd0},
+                                         {0xcc, 0x50, 0xe3, 0xa9, 0x9b, 0xb4}};
+                                         //{0xb4, 0xe6, 0x2d, 0xf6, 0xe6, 0xd5}};
 
 int GetOtherDevice()
 {

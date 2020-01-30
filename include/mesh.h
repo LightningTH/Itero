@@ -42,10 +42,11 @@ typedef class MeshNetwork
         //Required mesh network information during initialization
         typedef struct MeshNetworkData
         {
-            unsigned int BroadcastLFSR;                 //any value that is not 0 or all bits set
-            uint8_t BroadcastMask[3];                   //each value between 1 and 31 inclusive, co-prime against the number 32 (no common divisor for all numbers)
-            unsigned int DiffieHellman_P;               //must be prime
-            unsigned int DiffieHellman_G;               //must be non-zero and smaller than P, preferably prime
+            unsigned int BroadcastLFSR[2];              //two values that are not 0 or all bits set
+            uint8_t BroadcastMask1[3];                  //each value between 1 and 31 inclusive, co-prime against the number 32 (no common divisor for all numbers)
+            uint8_t BroadcastMask2[3];                  //each value between 1 and 31 inclusive, co-prime against the number 32 (no common divisor for all numbers)
+            unsigned long long DiffieHellman_P;             //must be prime
+            unsigned long long  DiffieHellman_G;            //must be non-zero and smaller than P, preferably prime
             MessageCallbackFunc ReceiveMessageCallback;     //function to call when receiving a message from a known/connected device
                                                             //DataSize = 0          - Acknowledgement of direct message sent to a MAC
             MessageCallbackFunc PingCallback;               //function to call when pinged from a device

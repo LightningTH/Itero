@@ -7,6 +7,7 @@ int MeshNetworkInternal::Connect(const uint8_t *MAC)
     KnownDeviceStruct *NewDevice;
     DHHandshakeStruct DHChal;
     uint8_t Payload[sizeof(DHHandshakeStruct)];
+    LFSRStruct LFSR;
 
     //if not initialized fail
     if(!this->Initialized)
@@ -26,16 +27,15 @@ int MeshNetworkInternal::Connect(const uint8_t *MAC)
         NewDevice->ConnectState = CS_ResetConnecting;
 
         DEBUG_WRITE("LFSR_Reset: ");
-        DEBUG_WRITEHEXVAL(NewDevice->LFSR_Reset, 8);
+        DEBUG_WRITEHEXVAL(NewDevice->LFSR_Reset.LFSR, 8);
         DEBUG_WRITE(", Mask: ");
-        DEBUG_WRITEHEXVAL(NewDevice->LFSR_ResetMask, 8);
+        DEBUG_WRITEHEXVAL(NewDevice->LFSR_Reset.LFSRMask, 8);
         DEBUG_WRITE("\n");
 
-        //setup LFSR_In as our temp storage for Reset to stay in sync with the back and forth comms
-        NewDevice->LFSR_In = NewDevice->LFSR_Reset;
+        LFSR = NewDevice->LFSR_Reset;
 
         //encrypt it
-        this->Encrypt(&DHChal, Payload, sizeof(DHHandshakeStruct), &NewDevice->LFSR_In, NewDevice->LFSR_ResetMask);
+        this->Encrypt(&DHChal, Payload, sizeof(DHHandshakeStruct), &LFSR);
 
         //generate a payload indicating we are attempting to reconnect and send it
         return this->SendPayload(MSG_ConnectRequest, MAC, Payload, sizeof(DHHandshakeStruct));
@@ -54,9 +54,11 @@ int MeshNetworkInternal::Connect(const uint8_t *MAC)
         memcpy(NewDevice->MAC, MAC, MAC_SIZE);
 
         //generate a private value and value to send along for diffie hellman
-        NewDevice->LFSR_Reset = DHCreateChallenge(&DHChal.Challenge);
+        NewDevice->LFSR_Reset.DH = DHCreateChallenge(&DHChal.Challenge);
         DHChal.Mask = this->CreateLFSRMask();
-        NewDevice->LFSR_ResetMask = DHChal.Mask;
+        DHChal.RotMask = this->CreateLFSRMask();
+        NewDevice->LFSR_Reset.LFSRMask = DHChal.Mask;
+        NewDevice->LFSR_Reset.LFSRRotMask = DHChal.RotMask;
         NewDevice->ConnectState = ConnectStateEnum::CS_Connecting;
 
         //add to our list
@@ -74,8 +76,7 @@ int MeshNetworkInternal::ConnectRequest(const uint8_t *MAC, uint8_t *Payload, in
     KnownDeviceStruct *Device;
     DHHandshakeStruct *DHChal;
     DHFinalizeHandshakeStruct DHFinal;
-    unsigned int MasterLFSR;
-    unsigned int MasterLFSRMask;
+    LFSRStruct MasterLFSR;
 
     DHChal = (DHHandshakeStruct *)Payload;
 
@@ -103,16 +104,19 @@ int MeshNetworkInternal::ConnectRequest(const uint8_t *MAC, uint8_t *Payload, in
 
         //we already have established a connection so they must want to reset everything
         MasterLFSR = Device->LFSR_Reset;
-        MasterLFSRMask = Device->LFSR_ResetMask;
 
         DEBUG_WRITE("LFSR_Reset: ");
-        DEBUG_WRITEHEXVAL(Device->LFSR_Reset, 8);
+        DEBUG_WRITEHEXVAL(Device->LFSR_Reset.LFSR, 8);
         DEBUG_WRITE(", Mask: ");
-        DEBUG_WRITEHEXVAL(Device->LFSR_ResetMask, 8);
+        DEBUG_WRITEHEXVAL(Device->LFSR_Reset.LFSRMask, 8);
+        DEBUG_WRITE(", ROT: ");
+        DEBUG_WRITEHEXVAL(Device->LFSR_Reset.LFSRRot, 8);
+        DEBUG_WRITE(", RotMask: ");
+        DEBUG_WRITEHEXVAL(Device->LFSR_Reset.LFSRRotMask, 8);
         DEBUG_WRITE("\n");
 
         //attempt to decrypt and see if it matches the reset command
-        this->Decrypt(Payload, DHChal, sizeof(DHHandshakeStruct), &MasterLFSR, MasterLFSRMask);
+        this->Decrypt(Payload, DHChal, sizeof(DHHandshakeStruct), &MasterLFSR);
         DEBUG_WRITE("Reset cmd: ");
         DEBUG_WRITEHEXVAL(DHChal->Challenge, 8);
         DEBUG_WRITE(" == ");
@@ -150,13 +154,14 @@ int MeshNetworkInternal::ConnectRequest(const uint8_t *MAC, uint8_t *Payload, in
         this->InsertKnownDevice(Device);
 
         //generate our challenge side
-        MasterLFSR = DHCreateChallenge(&DHFinal.Chal);
+        MasterLFSR.DH = DHCreateChallenge(&DHFinal.Chal);
 
         //we have our private side and the value from the other side, calculate a master
         //value then random generate the other pieces to pass back encrypted with the new information
         //this master value is only used once to get the data sent
-        MasterLFSR = DHFinishChallenge(MasterLFSR, DHChal->Challenge);
-        MasterLFSRMask = DHChal->Mask;
+        MasterLFSR.DH = DHFinishChallenge(MasterLFSR.DH, DHChal->Challenge);
+        MasterLFSR.LFSRMask = DHChal->Mask;
+        MasterLFSR.LFSRRotMask = DHChal->RotMask;
 
         //indicate in a connecting state
         Device->ConnectState = ConnectStateEnum::CS_Connecting;
@@ -165,8 +170,10 @@ int MeshNetworkInternal::ConnectRequest(const uint8_t *MAC, uint8_t *Payload, in
     //generate new LFSR values
     for(int i = 0; i < 3; i++)
     {
-        DHFinal.LFSR.LFSR[i] = esp_random();
-        DHFinal.LFSR.LFSRMask[i] = this->CreateLFSRMask();
+        DHFinal.LFSR[i].LFSR = esp_random();
+        DHFinal.LFSR[i].LFSRMask = this->CreateLFSRMask();
+        DHFinal.LFSR[i].LFSRRot = esp_random();
+        DHFinal.LFSR[i].LFSRRotMask = this->CreateLFSRMask();
     }
 
     //if this is a reset packet then set the challenge value as the CRC of the LFSR data
@@ -174,46 +181,51 @@ int MeshNetworkInternal::ConnectRequest(const uint8_t *MAC, uint8_t *Payload, in
     if(Device->ConnectState == ConnectStateEnum::CS_ResetConnecting)
     {
         //change LFSR[0] and it's mask to our reset values as we don't want reset to change
-        DHFinal.LFSR.LFSR[0] = Device->LFSR_Reset;
-        DHFinal.LFSR.LFSRMask[0] = Device->LFSR_ResetMask;
-        
+        DHFinal.LFSR[0] = Device->LFSR_Reset;
         DHFinal.Chal = this->CalculateCRC(&DHFinal.LFSR, sizeof(DHFinal.LFSR));
-        this->Encrypt(&DHFinal.Chal, &DHFinal.Chal, sizeof(DHFinal.Chal), &MasterLFSR, MasterLFSRMask);
+        this->Encrypt(&DHFinal.Chal, &DHFinal.Chal, sizeof(DHFinal.Chal), &MasterLFSR);
     }
     else
     {
         //only set these if we are not resetting
-        Device->LFSR_Reset = DHFinal.LFSR.LFSR[0];
-        Device->LFSR_ResetMask = DHFinal.LFSR.LFSRMask[0];
+        Device->LFSR_Reset = DHFinal.LFSR[0];
     }
     
     //lfsr
-    Device->LFSR_In = DHFinal.LFSR.LFSR[1];
-    Device->LFSR_Out = DHFinal.LFSR.LFSR[2];
-
-    //masks
-    Device->LFSR_InMask = DHFinal.LFSR.LFSRMask[1];
-    Device->LFSR_OutMask = DHFinal.LFSR.LFSRMask[2];
+    Device->LFSR_In = DHFinal.LFSR[1];
+    Device->LFSR_Out = DHFinal.LFSR[2];
 
     DEBUG_WRITE("LFSR_In: ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_In, 8);
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_InMask, 8);
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     DEBUG_WRITE("LFSR_Out: ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_Out, 8);
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_OutMask, 8);
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     DEBUG_WRITE("ConnectState: ");
     DEBUG_WRITE(Device->ConnectState);
     DEBUG_WRITE("\n");
     DEBUG_WRITE("MasterLFSR: ");
-    DEBUG_WRITEHEXVAL(MasterLFSR, 8);
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
-    DEBUG_WRITEHEXVAL(MasterLFSRMask, 8);
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     //copy our name in
@@ -223,7 +235,7 @@ int MeshNetworkInternal::ConnectRequest(const uint8_t *MAC, uint8_t *Payload, in
     //now encrypt the data and return it
     //note, on a reset MasterLFSR was modified from a previous decryption and the other side
     //is holding that new value for this packet that will be sent
-    this->Encrypt(&DHFinal.LFSR, &DHFinal.LFSR, sizeof(DHFinal.LFSR), &MasterLFSR, MasterLFSRMask);
+    this->Encrypt(&DHFinal.LFSR, &DHFinal.LFSR, sizeof(DHFinal.LFSR), &MasterLFSR);
     return this->SendPayload(MSG_ConnHandshake, MAC, (uint8_t *)&DHFinal, sizeof(DHFinal));
 }
 
@@ -232,8 +244,7 @@ int MeshNetworkInternal::ConnectHandshake(const uint8_t *MAC, uint8_t *Payload, 
 {
     KnownDeviceStruct *Device;
     DHFinalizeHandshakeStruct *DHFinal;
-    unsigned int MasterLFSR;
-    unsigned int MasterLFSRMask;
+    LFSRStruct MasterLFSR;
     int Ret;
     ConnectedStruct ConnectedData;
 
@@ -254,29 +265,33 @@ int MeshNetworkInternal::ConnectHandshake(const uint8_t *MAC, uint8_t *Payload, 
     //we have our private side and the value from the other side, calculate a master
     if(Device->ConnectState == ConnectStateEnum::CS_ResetConnecting)
     {
-        MasterLFSR = Device->LFSR_In;   //get the value we stopped at
-        MasterLFSRMask = Device->LFSR_ResetMask;
+        MasterLFSR = Device->LFSR_In; //get the value we stopped at
 
         //in reset, decrypt the CRC Value
-        this->Decrypt(&DHFinal->Chal, &DHFinal->Chal, sizeof(DHFinal->Chal), &MasterLFSR, MasterLFSRMask);
+        this->Decrypt(&DHFinal->Chal, &DHFinal->Chal, sizeof(DHFinal->Chal), &MasterLFSR);
     }
     else
     {
-        MasterLFSR = DHFinishChallenge(Device->LFSR_Reset, DHFinal->Chal);
-        MasterLFSRMask = Device->LFSR_ResetMask;
+        MasterLFSR.DH = DHFinishChallenge(Device->LFSR_Reset.DH, DHFinal->Chal);
+        MasterLFSR.LFSRMask = Device->LFSR_Reset.LFSRMask;
+        MasterLFSR.LFSRRotMask = Device->LFSR_Reset.LFSRRotMask;
     }
 
     DEBUG_WRITE("ConnectState: ");
     DEBUG_WRITE(Device->ConnectState);
     DEBUG_WRITE("\n");
     DEBUG_WRITE("MasterLFSR: ");
-    DEBUG_WRITEHEXVAL(MasterLFSR, 8);
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
-    DEBUG_WRITEHEXVAL(MasterLFSRMask, 8);
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     //attempt to decrypt the payload
-    this->Decrypt(&DHFinal->LFSR, &DHFinal->LFSR, sizeof(DHFinal->LFSR), &MasterLFSR, MasterLFSRMask);
+    this->Decrypt(&DHFinal->LFSR, &DHFinal->LFSR, sizeof(DHFinal->LFSR), &MasterLFSR);
 
     //if part of the reset then validate the CRC
     if(Device->ConnectState == ConnectStateEnum::CS_ResetConnecting)
@@ -287,8 +302,7 @@ int MeshNetworkInternal::ConnectHandshake(const uint8_t *MAC, uint8_t *Payload, 
     else
     {
         //set the LFSR_Reset to new values as this is the first connection
-        Device->LFSR_Reset = DHFinal->LFSR.LFSR[0];
-        Device->LFSR_ResetMask = DHFinal->LFSR.LFSRMask[0];
+        Device->LFSR_Reset = DHFinal->LFSR[0];
     }
 
     //fill in our side of the values provided
@@ -296,23 +310,27 @@ int MeshNetworkInternal::ConnectHandshake(const uint8_t *MAC, uint8_t *Payload, 
     //NOTE: In and Out are swapped from the other side
 
     //lfsr
-    Device->LFSR_In = DHFinal->LFSR.LFSR[2];
-    Device->LFSR_Out = DHFinal->LFSR.LFSR[1];
-
-    //masks
-    Device->LFSR_InMask = DHFinal->LFSR.LFSRMask[2];
-    Device->LFSR_OutMask = DHFinal->LFSR.LFSRMask[1];
+    Device->LFSR_In = DHFinal->LFSR[2];
+    Device->LFSR_Out = DHFinal->LFSR[1];
 
     DEBUG_WRITE("LFSR_In: ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_In, 8);
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_InMask, 8);
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     DEBUG_WRITE("LFSR_Out: ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_Out, 8);
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
-    DEBUG_WRITEHEXVAL(Device->LFSR_OutMask, 8);
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     //make sure our IDs are 0
@@ -322,13 +340,12 @@ int MeshNetworkInternal::ConnectHandshake(const uint8_t *MAC, uint8_t *Payload, 
     //both sides should be in sync now, send a connected message
     ConnectedData.ID = CONNECTED_CMD;
     ConnectedData.LFSR = Device->LFSR_Reset;
-    ConnectedData.LFSRMask = Device->LFSR_ResetMask;
 
     //copy our name in
     memset(ConnectedData.Name, 0, sizeof(ConnectedData.Name));
     memcpy(ConnectedData.Name, this->PingData, this->PingDataLen);
 
-    this->Encrypt(&ConnectedData, &ConnectedData, sizeof(ConnectedData), &Device->LFSR_Out, Device->LFSR_OutMask);
+    this->Encrypt(&ConnectedData, &ConnectedData, sizeof(ConnectedData), &Device->LFSR_Out);
     Ret = this->SendPayload(MSG_Connected, MAC, (uint8_t *)&ConnectedData, sizeof(ConnectedData));
     DEBUG_WRITE("SendPayload ret: ");
     DEBUG_WRITE(Ret);
@@ -356,7 +373,6 @@ int MeshNetworkInternal::ConnectHandshake(const uint8_t *MAC, uint8_t *Payload, 
         PrefConnStruct NewConnData;
         memcpy(NewConnData.MAC, Device->MAC, MAC_SIZE);
         NewConnData.LFSR_Reset = Device->LFSR_Reset;
-        NewConnData.LFSR_ResetMask = Device->LFSR_ResetMask;
 
         uint8_t DeviceCount;
         uint8_t PrefID;
@@ -401,7 +417,7 @@ int MeshNetworkInternal::Connected(const uint8_t *MAC, uint8_t *Payload, int Pay
 
     //payload was not cycled through the LFSR yet so decrypt and check it's value
     ConnValue = (ConnectedStruct *)Payload;
-    this->Decrypt(ConnValue, ConnValue, PayloadLen, &Device->LFSR_In, Device->LFSR_InMask);
+    this->Decrypt(ConnValue, ConnValue, PayloadLen, &Device->LFSR_In);
     if(ConnValue->ID != CONNECTED_CMD)
     {
         //no match, delete the device and fail
@@ -415,7 +431,6 @@ int MeshNetworkInternal::Connected(const uint8_t *MAC, uint8_t *Payload, int Pay
 
     //grab the reset vectors as everything is good now
     Device->LFSR_Reset = ConnValue->LFSR;
-    Device->LFSR_ResetMask = ConnValue->LFSRMask;
 
     //alert our side that someone established a connection if not a reset
     if((Device->ConnectState != ConnectStateEnum::CS_ResetConnecting) && this->ConnectedCallback)
@@ -425,8 +440,7 @@ int MeshNetworkInternal::Connected(const uint8_t *MAC, uint8_t *Payload, int Pay
     PrefConnStruct NewConnData;
     memcpy(NewConnData.MAC, Device->MAC, MAC_SIZE);
     NewConnData.LFSR_Reset = Device->LFSR_Reset;
-    NewConnData.LFSR_ResetMask = Device->LFSR_ResetMask;
-    
+
     uint8_t DeviceCount;
     uint8_t PrefID;
 

@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-//#define DEBUG_MESH
+#define DEBUG_MESH
 
 #ifdef DEBUG_MESH
 #define DEBUG_WRITE(msg) Serial.print(msg)
@@ -12,6 +12,18 @@
     char temp[9];                               \
     sprintf(temp, "%08X", (unsigned int)(val)); \
     Serial.print(&temp[8-len]);                 \
+}
+#define DEBUG_WRITEHEXVAL64(val) {                  \
+    char temp[3];                                   \
+    unsigned char *valptr = (unsigned char *)&val;  \
+    char lencount = 16;                             \
+    valptr += 7;                                    \
+    while(lencount) {                               \
+        sprintf(temp, "%02X", *valptr);             \
+        lencount -= 2;                              \
+        valptr--;                                   \
+        Serial.print(temp);                         \
+    }                                               \
 }
 #define DEBUG_WRITEMAC(mac) {Serial.printf("%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);}
 #define DEBUG_DUMPHEX(msg, data, datalen) {      \
