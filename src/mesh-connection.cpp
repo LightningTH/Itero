@@ -109,6 +109,10 @@ int MeshNetworkInternal::ConnectRequest(const uint8_t *MAC, uint8_t *Payload, in
         DEBUG_WRITEHEXVAL(Device->LFSR_Reset.LFSR, 8);
         DEBUG_WRITE(", Mask: ");
         DEBUG_WRITEHEXVAL(Device->LFSR_Reset.LFSRMask, 8);
+        DEBUG_WRITE(", ROT: ");
+        DEBUG_WRITEHEXVAL(Device->LFSR_Reset.LFSRRot, 8);
+        DEBUG_WRITE(", RotMask: ");
+        DEBUG_WRITEHEXVAL(Device->LFSR_Reset.LFSRRotMask, 8);
         DEBUG_WRITE("\n");
 
         //attempt to decrypt and see if it matches the reset command
@@ -195,12 +199,20 @@ int MeshNetworkInternal::ConnectRequest(const uint8_t *MAC, uint8_t *Payload, in
     DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     DEBUG_WRITE("LFSR_Out: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     DEBUG_WRITE("ConnectState: ");
@@ -210,6 +222,10 @@ int MeshNetworkInternal::ConnectRequest(const uint8_t *MAC, uint8_t *Payload, in
     DEBUG_WRITEHEXVAL(MasterLFSR.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
     DEBUG_WRITEHEXVAL(MasterLFSR.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     //copy our name in
@@ -268,6 +284,10 @@ int MeshNetworkInternal::ConnectHandshake(const uint8_t *MAC, uint8_t *Payload, 
     DEBUG_WRITEHEXVAL(MasterLFSR.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
     DEBUG_WRITEHEXVAL(MasterLFSR.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(MasterLFSR.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     //attempt to decrypt the payload
@@ -290,19 +310,27 @@ int MeshNetworkInternal::ConnectHandshake(const uint8_t *MAC, uint8_t *Payload, 
     //NOTE: In and Out are swapped from the other side
 
     //lfsr
-    Device->LFSR_In = DHFinal->LFSR[1];
-    Device->LFSR_Out = DHFinal->LFSR[2];
+    Device->LFSR_In = DHFinal->LFSR[2];
+    Device->LFSR_Out = DHFinal->LFSR[1];
 
     DEBUG_WRITE("LFSR_In: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_In.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     DEBUG_WRITE("LFSR_Out: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRotMask, 8);
     DEBUG_WRITE("\n");
 
     //make sure our IDs are 0

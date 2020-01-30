@@ -189,8 +189,8 @@ void MeshNetworkInternal::CalculateLFSR(LFSRStruct *LFSR)
     //determine how much we will rotate the LFSRRot and the LFSR itself
     unsigned char ROT[2];
 
-    //1 to 8 for LFSR, 1 to 16 for LFSRRot so it is unknown if we do or don't mix in it's rotation into the LFSR rotation
-    ROT[0] = (LFSR->LFSRRot & 0x7) + 1;
+    //1 to 16 for LFSR, 1 to 16 for LFSRRot so it is unknown if we do or don't mix in it's rotation into the LFSR rotation
+    ROT[0] = (LFSR->LFSRRot & 0xf) + 1;
     ROT[1] = ((LFSR->LFSRRot >> 7) & 0xf) + 1;
 
     //now rotate and calculate new values for LFSR and LFSRRot

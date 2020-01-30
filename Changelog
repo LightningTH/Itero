@@ -1,0 +1,8 @@
+0.2.0
+-----
+- Diffie Hellman upgraded from 32bit to 64bit
+- Additional LFSR rotation added improving LFSR encryption security
+- Fix LFSR 4/6 masking bugs
+
+0.1.0
+- initial release

@@ -84,11 +84,11 @@ uint8_t *MeshNetworkInternal::EncryptPacket(KnownDeviceStruct *Device, const uin
     LFSRStruct LFSR;
 
     //copy off the LFSR so that we can update if successful
-    DEBUG_WRITE("EncryptPacket: LFSR ");
+    DEBUG_WRITE("EncryptPacket: LFSR: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSR, 8);
     DEBUG_WRITE(", Mask: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRMask, 8);
-    DEBUG_WRITE(", ROT ");
+    DEBUG_WRITE(", ROT: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRot, 8);
     DEBUG_WRITE(", RotMask: ");
     DEBUG_WRITEHEXVAL(Device->LFSR_Out.LFSRRotMask, 8);
@@ -116,6 +116,12 @@ uint8_t *MeshNetworkInternal::EncryptBroadcastPacket(const uint8_t *InData, unsi
     this->PermuteBroadcastLFSR(this->MAC, this->BroadcastMsgID, &LFSR);
     DEBUG_WRITE("Encrypt Broadcast LFSR: ");
     DEBUG_WRITEHEXVAL(LFSR.LFSR, 8);
+    DEBUG_WRITE(", Mask: ");
+    DEBUG_WRITEHEXVAL(LFSR.LFSRMask, 8);
+    DEBUG_WRITE(", ROT: ");
+    DEBUG_WRITEHEXVAL(LFSR.LFSRRot, 8);
+    DEBUG_WRITE(", RotMask: ");
+    DEBUG_WRITEHEXVAL(LFSR.LFSRRotMask, 8);
     DEBUG_WRITE(", ID: ");
     DEBUG_WRITEHEXVAL(this->BroadcastMsgID, 8);
     DEBUG_WRITE("\n");
