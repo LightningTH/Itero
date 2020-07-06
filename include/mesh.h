@@ -9,6 +9,7 @@
 typedef void (*MessageCallbackFunc)(const uint8_t *From_MAC, const uint8_t *Data, unsigned int DataLen);
 typedef void (*ConnectedCallbackFunc)(const uint8_t *MAC, const char *Name, int Succeeded);
 typedef void (*SendFailedCallbackFunc)(const uint8_t *MAC);
+typedef void (*SendMessageFunc)(const uint8_t *Data, unsigned int DataLen);
 
 typedef class MeshNetwork
 {
@@ -55,7 +56,9 @@ typedef class MeshNetwork
                                                             //Succeeded = 1         - Connection succeeded
                                                             //Succeeded = 0         - Connection failed
                                                             //Succeeded = -1        - Connection was disconnected
-            SendFailedCallbackFunc SendFailedCallback;       //function to call when a direct message fails to be ack'd
+            SendFailedCallbackFunc SendFailedCallback;      //function to call when a direct message fails to be ack'd
+            SendMessageFunc SendMessageCallback;            //If filled in then this function will be called each time there is a message to send
+            bool BroadcastFlag;                             //Set the default state for broadcasting
         } MeshNetworkData;
 
         //write data to a specific mac on the mesh network, returns the length written
@@ -96,6 +99,12 @@ typedef class MeshNetwork
 
         //specify the ping data to send
         virtual void SetPingData(const uint8_t *Data, uint16_t Len);
+
+        //Call this function if there is a chunk of data to process when not broadcasting itself
+        virtual void ProcessMessage(const uint8_t *Data, uint16_t Len);
+
+        //set if broadcasting should be done
+        virtual void SetBroadcastFlag(bool BroadcastFlag);
 } MeshNetwork;
 
 //Mesh network initialization

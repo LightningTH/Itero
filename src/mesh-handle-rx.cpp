@@ -55,7 +55,8 @@ void MeshNetworkInternal::ProcessRXMessages()
 
 void Promiscuous_RX(void *buf, wifi_promiscuous_pkt_type_t type)
 {
-    if(_GlobalMesh)
+    //if we hav a global mesh and it's flag is set for broadcasting then allow promiscuous to process the message
+    if(_GlobalMesh && _GlobalMesh->CanBroadcast())
         _GlobalMesh->PromiscuousRX(buf, type);
 }
 
@@ -234,7 +235,7 @@ void MeshNetworkInternal::HandleRXMessage(uint8_t *Data, size_t DataLen, size_t 
                     this->InsertUnknownDevice(UnknownDevice);
 
                 //all good, first rebroadcast this packet for others to see if we haven't seen enough copies
-                if(Count < 3)
+                if((Count < 3) && this->BroadcastFlag)
                 {
                     //delay a random amount of time so we don't flood the wifi
                     delay((esp_random() & 0xff) + 1);   //0 to 265ms delay

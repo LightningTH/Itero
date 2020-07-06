@@ -109,6 +109,11 @@ void SendToDeviceFailed(const uint8_t *MAC)
     Serial.print("\n");
 }
 
+void SendMessage(const uint8_t *Data, unsigned int Len)
+{
+    Serial.printf("Request to send %d bytes of data\n", Len);
+}
+
 void setup()
 {
     MeshNetwork::MeshNetworkData MeshInitData;
@@ -147,6 +152,8 @@ void setup()
     MeshInitData.ConnectedCallback = DeviceConnected;
     MeshInitData.ReceiveMessageCallback = MessageReceived;
     MeshInitData.BroadcastMessageCallback = BroadcastMessageReceived;
+    MeshInitData.SendMessageCallback = SendMessage;
+    MeshInitData.BroadcastFlag = false;
 
     Mesh = NewMeshNetwork(&MeshInitData, &MeshInitialized);
     if(!Mesh || (MeshInitialized != MeshNetwork::MeshInitErrors::MeshInitialized))
@@ -194,6 +201,9 @@ void PrintMenu()
         "4. Ping\n"
         "5. Reset Connection Data in storage\n"
         "6. Disconnect\n"
+        "7. Do Receive Message Call\n"
+        "8. Turn on Broadcast Flag\n"
+        "9. Turn off Broadcast Flag\n"
     );
 }
 
@@ -246,6 +256,24 @@ void loop()
         case 0x36:
             DeviceID = GetOtherDevice();
             Mesh->Disconnect(DeviceMacs[DeviceID]);
+            break;
+
+        case 0x37:
+            uint8_t *message;
+            uint16_t message_len;
+            message = (uint8_t *)malloc(52);
+            memcpy(message, "this should be a raw message for the mesh to process", 52);
+            message_len = 52;
+            Mesh->ProcessMessage(message, message_len);
+            free(message);
+            break;
+
+        case 0x38:
+            Mesh->SetBroadcastFlag(true);
+            break;
+
+        case 0x39:
+            Mesh->SetBroadcastFlag(false);
             break;
 
         default:
