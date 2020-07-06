@@ -65,7 +65,8 @@ int MeshNetworkInternal::Write(const uint8_t MAC[MAC_SIZE], const uint8_t *Data,
         if(Device->ConnectState == CS_Reset)
         {
             this->Connect(Device->MAC);
-            this->MessageWasSent = 1;
+            if(this->BroadcastFlag)
+                this->MessageWasSent = 1;
             return MeshWriteErrors::ResettingConnection;
         }
 
@@ -90,7 +91,8 @@ int MeshNetworkInternal::Write(const uint8_t MAC[MAC_SIZE], const uint8_t *Data,
     Ret = this->SendPayload(MSG_Message, MAC, EncData, EncLen);
 
     //if a broadcast message then free the packet buffer
-    if(BroadcastMsg)
+    //if a broadcast message or not supposed to broadcast then free the packet buffer
+    if(BroadcastMsg || !this->BroadcastFlag)
         free(EncData);
     else
         this->MessageWasSent = 1;
@@ -100,7 +102,7 @@ int MeshNetworkInternal::Write(const uint8_t MAC[MAC_SIZE], const uint8_t *Data,
 
 void *Static_ResendMessages(void *)
 {
-    if(_GlobalMesh)
+    if(_GlobalMesh && _GlobalMesh->CanBroadcast())
         _GlobalMesh->ResendMessages();
 
     return 0;
@@ -234,22 +236,33 @@ int MeshNetworkInternal::SendPayload(MessageTypeEnum MsgType, const uint8_t *MAC
     DEBUG_WRITE("\n");
     DEBUG_DUMPHEX(0, FinalPayload, DataLen + sizeof(WifiHeaderStruct));
 
+    //if we have a function to call for sending then call it
+    if(this->SendMessageCallback)
+        this->SendMessageCallback(FinalPayload, DataLen + sizeof(WifiHeaderStruct));
+
     //transmit the raw packet
-    ret = esp_wifi_80211_tx(WIFI_IF_STA, FinalPayload, DataLen + sizeof(WifiHeaderStruct), false);
+    ret = 0;
+    if(this->BroadcastFlag)
+    {
+        ret = esp_wifi_80211_tx(WIFI_IF_STA, FinalPayload, DataLen + sizeof(WifiHeaderStruct), false);
+        free(FinalPayload);
+        if(ret != ESP_OK)
+        {
+            DEBUG_WRITE("Error on esp_wifi_80211_tx: ");
+            DEBUG_WRITE(ret);
+            DEBUG_WRITE("\n");
+            ret = -1;
+        }
+        else
+        {
+            DEBUG_WRITE("esp_wifi_80211_tx successful");
+            DEBUG_WRITE("\n");
+            ret = 0;
+        }
+    }
+
     free(FinalPayload);
-    if(ret != ESP_OK)
-    {
-        DEBUG_WRITE("Error on esp_wifi_80211_tx: ");
-        DEBUG_WRITE(ret);
-        DEBUG_WRITE("\n");
-        return -1;
-    }
-    else
-    {
-        DEBUG_WRITE("esp_wifi_80211_tx successful");
-        DEBUG_WRITE("\n");
-    }
-    
-    //all good
-    return 0;
+
+    //return result
+    return ret;
 }

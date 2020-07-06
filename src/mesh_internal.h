@@ -72,6 +72,14 @@ typedef class MeshNetworkInternal : public MeshNetwork
         //specify the ping data to send
         void SetPingData(const uint8_t *Data, uint16_t Len);
 
+        //Call this function if there is a chunk of data to process when not broadcasting itself
+        void ProcessMessage(const uint8_t *Data, uint16_t Len);
+
+        //set if broadcasting should be done
+        void SetBroadcastFlag(bool BroadcastFlag);
+
+        bool CanBroadcast();
+
     private:
         //we are using a similar but not identical header frame for 802.11
         //namely we removed the BSS ID and extended SequenceID to be 4 bytes
@@ -193,6 +201,7 @@ typedef class MeshNetworkInternal : public MeshNetwork
         MessageCallbackFunc PingCallback;
         ConnectedCallbackFunc ConnectedCallback;
         SendFailedCallbackFunc SendFailedCallback;
+        SendMessageFunc SendMessageCallback;
 
         //ping data
         uint8_t *PingData;
@@ -210,6 +219,7 @@ typedef class MeshNetworkInternal : public MeshNetwork
         int Initialized;
         pthread_t MessageCheckThread;
         int MessageWasSent;                 //flag to indicate that a message was sent so our checking function will process through possible connections
+        int BroadcastFlag;
 
         //internal functions
         void HandleRXMessage(uint8_t *Data, size_t Len, size_t Count);
