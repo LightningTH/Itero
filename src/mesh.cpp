@@ -73,9 +73,11 @@ MeshNetworkInternal::MeshNetworkInternal(MeshNetworkData *InitData, MeshInitErro
     this->ConnectedCallback = InitData->ConnectedCallback;
     this->SendFailedCallback = InitData->SendFailedCallback;
     this->PingCallback = InitData->PingCallback;
+    this->SendMessageCallback = InitData->SendMessageCallback;
 
     //setup our global info
     this->MessageWasSent = 0;
+    this->BroadcastFlag = InitData->BroadcastFlag;
     _GlobalMesh = this;
 
     //setup the wifi to watch for the messages we want
@@ -180,4 +182,20 @@ void MeshNetworkInternal::SetPingData(const uint8_t *Data, uint16_t Len)
     this->PingData = (uint8_t *)malloc(Len);
     memcpy(this->PingData, Data, Len);
     this->PingDataLen = Len;
+}
+
+void MeshNetworkInternal::SetBroadcastFlag(bool BroadcastFlag)
+{
+    this->BroadcastFlag = BroadcastFlag;
+}
+
+void MeshNetworkInternal::ProcessMessage(const uint8_t *Data, uint16_t Len)
+{
+    //call our internal function as if the data showed up normally
+    this->PromiscuousRX((void *)Data, WIFI_PKT_MGMT);
+}
+
+bool MeshNetworkInternal::CanBroadcast()
+{
+    return this->BroadcastFlag;
 }
