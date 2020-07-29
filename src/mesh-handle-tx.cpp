@@ -6,6 +6,9 @@
 #include <stdio.h>
 #include <string.h>
 
+extern "C" {
+#include "crypto/base64.h"
+}
 void MeshNetworkInternal::Ping()
 {
     //send a ping out to see who is around
@@ -238,7 +241,14 @@ int MeshNetworkInternal::SendPayload(MessageTypeEnum MsgType, const uint8_t *MAC
 
     //if we have a function to call for sending then call it
     if(this->SendMessageCallback)
-        this->SendMessageCallback(FinalPayload, DataLen + sizeof(WifiHeaderStruct));
+    {
+        //get a base64 version of the string
+        uint8_t *OutData;
+        size_t OutDataLen;
+        OutData = base64_encode(FinalPayload, DataLen + sizeof(WifiHeaderStruct), &OutDataLen);
+        this->SendMessageCallback(OutData, OutDataLen);
+        free(OutData);
+    }
 
     //transmit the raw packet
     ret = 0;

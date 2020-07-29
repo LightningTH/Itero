@@ -6,6 +6,10 @@
 #include <stdio.h>
 #include <string.h>
 
+extern "C" {
+#include "crypto/base64.h"
+}
+
 MeshNetworkInternal *_GlobalMesh = 0;
 
 MeshNetwork *NewMeshNetwork(MeshNetwork::MeshNetworkData *InitData, MeshNetwork::MeshInitErrors *Initialized)
@@ -191,8 +195,17 @@ void MeshNetworkInternal::SetBroadcastFlag(bool BroadcastFlag)
 
 void MeshNetworkInternal::ProcessMessage(const uint8_t *Data, uint16_t Len)
 {
+    size_t InLen;
+    uint8_t *InData;
+
+    InData = base64_decode(Data, Len, &InLen);
+    if(!InData)
+        return;
+
     //call our internal function as if the data showed up normally
-    this->PromiscuousRX((void *)Data, WIFI_PKT_MGMT);
+    this->PromiscuousRX((void *)InData, WIFI_PKT_MGMT);
+
+    free(InData);
 }
 
 bool MeshNetworkInternal::CanBroadcast()
