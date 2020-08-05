@@ -84,6 +84,7 @@ MeshNetworkInternal::MeshNetworkInternal(MeshNetworkData *InitData, MeshInitErro
     this->BroadcastFlag = InitData->BroadcastFlag;
     _GlobalMesh = this;
 
+    /*
     //setup the wifi to watch for the messages we want
     wifi_promiscuous_filter_t filter;
     filter.filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
@@ -94,6 +95,7 @@ MeshNetworkInternal::MeshNetworkInternal(MeshNetworkData *InitData, MeshInitErro
         *Initialized = MeshInitErrors::FailedToEnablePromiscuous;
         return;
     }
+    */
 
     //setup our flash storage
     this->prefs = new Preferences();
