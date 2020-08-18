@@ -246,6 +246,11 @@ int MeshNetworkInternal::SendPayload(MessageTypeEnum MsgType, const uint8_t *MAC
         uint8_t *OutData;
         size_t OutDataLen;
         OutData = base64_encode(FinalPayload, DataLen + sizeof(WifiHeaderStruct), &OutDataLen);
+        if(OutData[OutDataLen-1] == '\n')
+        {
+            OutDataLen--;
+            OutData[OutDataLen] = 0;
+        }
         this->SendMessageCallback(OutData, OutDataLen);
         free(OutData);
     }
