@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 
-#define DEBUG_MESH
+//#define DEBUG_MESH
 
 #ifdef DEBUG_MESH
 #define DEBUG_WRITE(msg) Serial.print(msg)
