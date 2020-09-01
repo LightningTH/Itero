@@ -56,6 +56,7 @@
 #define DEBUG_WRITEHEXVAL(val, len) {}
 #define DEBUG_WRITEMAC(mac) {}
 #define DEBUG_DUMPHEX(msg, data, datalen) {}
+#define DEBUG_WRITEHEXVAL64(val) {}
 #endif
 
 #endif
