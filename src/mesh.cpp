@@ -199,13 +199,24 @@ void MeshNetworkInternal::ProcessMessage(const uint8_t *Data, uint16_t Len)
 {
     size_t InLen;
     uint8_t *InData;
+    uint8_t *ProcessData;
 
     InData = base64_decode(Data, Len, &InLen);
     if(!InData)
         return;
 
-    //call our internal function as if the data showed up normally
-    this->PromiscuousRX((void *)InData, WIFI_PKT_MGMT);
+    //decode successful, add the ctrl header to the beginning to align everything
+    ProcessData = (uint8_t *)malloc(InLen + sizeof(wifi_pkt_rx_ctrl_t));
+    if(ProcessData)
+    {
+        memset(ProcessData, 0, sizeof(wifi_pkt_rx_ctrl_t));
+        memcpy(&ProcessData[sizeof(wifi_pkt_rx_ctrl_t)], InData, InLen);
+        ((wifi_pkt_rx_ctrl_t *)ProcessData)->sig_len = InLen + 4;
+
+        //call our internal function as if the data showed up normally
+        this->PromiscuousRX((void *)ProcessData, WIFI_PKT_MGMT);
+        free(ProcessData);
+    }
 
     free(InData);
 }

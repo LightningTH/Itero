@@ -101,19 +101,22 @@ void MeshNetworkInternal::PromiscuousRX(void *buf, wifi_promiscuous_pkt_type_t t
 
     //no current message, create it
     CurMessage = (MeshMessageStruct *)malloc(sizeof(MeshMessageStruct) + PayloadLen);
-    CurMessage->next = 0;
-    CurMessage->Count = 0;
-    CurMessage->Len = PayloadLen;
-    memcpy(CurMessage->Message, Payload, PayloadLen);
+    if(CurMessage)
+    {
+        CurMessage->next = 0;
+        CurMessage->Count = 0;
+        CurMessage->Len = PayloadLen;
+        memcpy(CurMessage->Message, Payload, PayloadLen);
 
-    //add it to the end
-    if(this->MeshMessageTail)
-        this->MeshMessageTail->next = CurMessage;
-    this->MeshMessageTail = CurMessage;
+        //add it to the end
+        if(this->MeshMessageTail)
+            this->MeshMessageTail->next = CurMessage;
+        this->MeshMessageTail = CurMessage;
 
-    //if no beginning then set it
-    if(!this->MeshMessageBegin)
-        this->MeshMessageBegin = CurMessage;
+        //if no beginning then set it
+        if(!this->MeshMessageBegin)
+            this->MeshMessageBegin = CurMessage;
+    }
 
     //unlock as we are done
     pthread_mutex_unlock(&mesh_message_lock);
